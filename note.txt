@@ -1,0 +1,1 @@
+load file excel danh sách lớp lên, sau đó chọn một sinh viên trong danh sách để nhận diện khuôn mặt
