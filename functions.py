@@ -1,3 +1,4 @@
+import re
 import cv2
 import csv
 import os
@@ -6,47 +7,92 @@ from PIL import Image
 import pandas as pd
 import datetime
 import time
-
-def clear_field(entry_widget, label_widget):
-    entry_widget.delete(0, 'end')
-    label_widget.configure(text="")
+from tkinter import messagebox
+import unicodedata
 
 
-def capture_image(std_name, std_number, label_widget):
-    name = std_name.get()
-    student_id = std_number.get()
+def is_valid_name(name):
+    """Kiểm tra tên hợp lệ (chỉ cho phép ký tự chữ cái và khoảng trắng)."""
+    return re.fullmatch(r'[A-Za-zÀ-ỹ\s]+', name) is not None
 
-    if name.isalpha():
+
+def remove_accents(input_str):
+    """Chuyển chuỗi có dấu thành không dấu."""
+    nfkd_form = unicodedata.normalize('NFKD', input_str)
+    return ''.join([c for c in nfkd_form if not unicodedata.combining(c)])
+
+
+def capture_image(name, student_id):
+    try:
+        # Kiểm tra tên hợp lệ
+        if not is_valid_name(name):
+            messagebox.showerror("Lỗi", "Tên không hợp lệ, vui lòng chỉ nhập chữ cái!")
+            return
+
+        # Xử lý tên không dấu
+        name_no_accents = remove_accents(name)
+
+        # Kiểm tra hoặc tạo thư mục TrainingImages
+        folder_path = "TrainingImages"
+        if not os.path.exists(folder_path):
+            os.makedirs(folder_path)
+
+        # Mở camera
         cam = cv2.VideoCapture(0)
-        harcascade_path = "haarcascade_frontalface_default.xml"
-        detector = cv2.CascadeClassifier(harcascade_path)
-        sample_num = 0
+        if not cam.isOpened():
+            messagebox.showerror("Lỗi", "Không thể mở camera. Vui lòng kiểm tra kết nối!")
+            return
 
+        # Load Haarcascade
+        harcascade_path = "haarcascade_frontalface_default.xml"
+        if not os.path.exists(harcascade_path):
+            messagebox.showerror("Lỗi", "File Haarcascade không tồn tại!")
+            cam.release()
+            return
+
+        detector = cv2.CascadeClassifier(harcascade_path)
+
+        sample_num = 0
         while True:
             ret, img = cam.read()
+            if not ret:
+                messagebox.showerror("Lỗi", "Không thể đọc dữ liệu từ camera.")
+                break
+
             img = cv2.flip(img, 1)
             gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
             faces = detector.detectMultiScale(gray, 1.1, 3)
+
             for (x, y, w, h) in faces:
-                cv2.rectangle(img, (x, y), (x + w, y + h), (255, 0, 0), 2)
                 sample_num += 1
-                cv2.imwrite(f"TrainingImages/{name}.{student_id}.{str(sample_num)}.jpg",
-                            gray[y:y + h, x:x + h])
+                image_path = os.path.join(folder_path, f"{name_no_accents}.{student_id}.{str(sample_num)}.jpg")
+                cv2.imwrite(image_path, gray[y:y + h, x:x + w])
+                cv2.rectangle(img, (x, y), (x + w, y + h), (255, 0, 0), 2)
                 cv2.imshow('FACE RECOGNIZER', img)
-            if cv2.waitKey(100) & 0xFF == ord('q') or sample_num > 50:
+
+            if cv2.waitKey(100) & 0xFF == ord('q') or sample_num >= 50:
                 break
 
         cam.release()
         cv2.destroyAllWindows()
-        res = f'Student details saved with:\nMatric number: {student_id} and Full Name: {name}'
 
-        with open('Excels/studentDetailss.csv', 'a+') as csv_file:
+        if sample_num == 0:
+            messagebox.showwarning("Cảnh báo", "Không chụp được khuôn mặt nào. Vui lòng thử lại!")
+            return
+
+        # Lưu thông tin không dấu vào CSV
+        csv_file_path = 'Excels/studentDetailss.csv'
+        if not os.path.exists('Excels'):
+            os.makedirs('Excels')
+
+        with open(csv_file_path, 'a+', newline='', encoding='utf-8-sig') as csv_file:
             writer = csv.writer(csv_file)
-            writer.writerow([student_id, name])
+            writer.writerow([student_id, name_no_accents])
 
-        label_widget.configure(text=res)
-    else:
-        label_widget.configure(text="Enter correct Matric Number")
+        # messagebox.showinfo("Thành công", f"Khuôn mặt của {name} đã được cập nhật thành công.")
+
+    except Exception as e:
+        messagebox.showerror("Lỗi", f"Đã xảy ra lỗi: {str(e)}")
 
 
 def get_images_and_labels(path):
@@ -64,59 +110,120 @@ def get_images_and_labels(path):
     return faces, ids
 
 
-def train_images(label_widget):
-    recognizer = cv2.face.LBPHFaceRecognizer_create()
-    faces, ids = get_images_and_labels("TrainingImages")
-    recognizer.train(faces, np.array(ids))
-    recognizer.save("Trainner.yml")
-    label_widget.configure(text="Images Trained")
+def train_images():
+    try:
+        recognizer = cv2.face.LBPHFaceRecognizer_create()
+        faces, ids = get_images_and_labels("TrainingImages")
+        recognizer.train(faces, np.array(ids))
+        recognizer.save("Trainner.yml")
+        # messagebox.showinfo("Thành công", "Hình ảnh đã được huấn luyện thành công.")
+    except Exception as e:
+        messagebox.showerror("Lỗi", f"Đã xảy ra lỗi khi huấn luyện hình ảnh: {str(e)}")
 
 
-def track_images(label_widget):
-    recognizer = cv2.face.LBPHFaceRecognizer_create()
-    recognizer.read("Trainner.yml")
-    harcascade_path = "haarcascade_frontalface_default.xml"
-    face_cascade = cv2.CascadeClassifier(harcascade_path)
-    df = pd.read_csv("Excels/studentDetailss.csv")
+def track_images(class_name, id_to_mssv):
+    try:
+        recognizer = cv2.face.LBPHFaceRecognizer_create()
+        recognizer.read("Trainner.yml")
+        harcascade_path = "haarcascade_frontalface_default.xml"
+        face_cascade = cv2.CascadeClassifier(harcascade_path)
 
-    font = cv2.FONT_HERSHEY_COMPLEX_SMALL
-    cam = cv2.VideoCapture(0)
-    col_names = ['Id', 'Name', 'Date', 'Time']
-    attendance = pd.DataFrame(columns=col_names)
+        # Đọc danh sách sinh viên từ CSV
+        student_details_path = "Excels/studentDetailss.csv"
+        if not os.path.exists(student_details_path):
+            messagebox.showerror("Lỗi", "File danh sách sinh viên không tồn tại!")
+            return
+        df = pd.read_csv(student_details_path)
 
-    while True:
-        ret, img = cam.read()
-        img = cv2.flip(img, 1)
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        faces = face_cascade.detectMultiScale(gray, 1.1, 3)
+        # Tạo thư mục lưu ảnh nhận diện nếu chưa tồn tại
+        recognized_folder = "RecognizedImages"
+        if not os.path.exists(recognized_folder):
+            os.makedirs(recognized_folder)
 
-        for (x, y, w, h) in faces:
-            tt = "Unknown"  # Giá trị mặc định cho tt
-            cv2.rectangle(img, (x, y), (x + w, y + h), (255, 0, 0), 2)
-            student_id, conf = recognizer.predict(gray[y:y + h, x:x + w])
+        # Đường dẫn file Excel của lớp
+        class_file_path = f"Data/{class_name}.xlsx"
+        if not os.path.exists(class_file_path):
+            messagebox.showerror("Lỗi", f"File điểm danh của lớp {class_name} không tồn tại!")
+            return
 
-            if conf < 60:
-                ts = time.time()
-                date = datetime.datetime.fromtimestamp(ts).strftime('%d-%m-%Y')
-                time_stamp = datetime.datetime.fromtimestamp(ts).strftime('%H:%M')
-                student_name = df.loc[df['ID'] == student_id]['NAME'].values
-                tt = f"{student_id}-{student_name}"
+        # Đọc file Excel của lớp
+        class_df = pd.read_excel(class_file_path)
+        class_df['MSSV'] = class_df['MSSV'].astype(str)  # Chuyển toàn bộ MSSV trong DataFrame thành chuỗi
 
-                attendance.loc[len(attendance)] = [student_id, student_name, date, time_stamp]
-                with open('Excels/AttendanceFile.csv', 'a+') as csv_file:
-                    writer = csv.writer(csv_file)
-                    writer.writerow([student_id, student_name, date, time_stamp])
-                label_widget.configure(text='ATTENDANCE UPDATED')
+        print(class_df)
 
-            else:
-                label_widget.configure(text='ID UNKNOWN, ATTENDANCE NOT UPDATED')
+        # Lấy ngày hiện tại và xác định cột tương ứng
+        current_date = datetime.datetime.now().strftime('%d-%m-%Y')
 
-            attendance.drop_duplicates(subset=['Id'], keep='first', inplace=True)
-            cv2.putText(img, str(tt), (x, y + h - 10), font, 0.8, (255, 255, 255), 1)
-            cv2.imshow('FACE RECOGNIZER', img)
+        # Kiểm tra nếu cột ngày hôm nay đã tồn tại trong DataFrame chưa
+        if current_date not in class_df.columns:
+            print(f"Ngày {current_date} chưa có trong file, thêm mới cột vào DataFrame.")
+            class_df[current_date] = None  # Thêm cột mới nếu chưa có
+        else:
+            print(f"Ngày {current_date} đã tồn tại trong file.")
 
-        if cv2.waitKey(1000) == ord('q'):
-            break
+        font = cv2.FONT_HERSHEY_COMPLEX_SMALL
+        cam = cv2.VideoCapture(0)
 
-    cam.release()
-    cv2.destroyAllWindows()
+        while True:
+            ret, img = cam.read()
+            if not ret:
+                messagebox.showerror("Lỗi", "Không thể đọc dữ liệu từ camera.")
+                break
+
+            img = cv2.flip(img, 1)
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            faces = face_cascade.detectMultiScale(gray, 1.1, 3)
+
+            for (x, y, w, h) in faces:
+                cv2.rectangle(img, (x, y), (x + w, y + h), (255, 0, 0), 2)
+                student_id, conf = recognizer.predict(gray[y:y + h, x:x + w])
+
+                if conf < 60:  # Nếu nhận diện thành công
+                    ts = time.time()
+                    date = datetime.datetime.fromtimestamp(ts).strftime('%d-%m-%Y')
+                    time_stamp = datetime.datetime.fromtimestamp(ts).strftime('%H:%M')
+
+                    # Chuyển ID thành MSSV từ id_to_mssv
+                    student_mssv = id_to_mssv.get(student_id, "Unknown")  # Lấy MSSV từ ID
+                    student_name = df.loc[df['ID'] == student_id]['NAME'].values[0]
+
+                    # In ra MSSV và tên nếu tìm thấy
+                    print(f"Đã nhận diện: MSSV: {student_mssv}, Tên: {student_name}")
+
+                    # Đảm bảo cột ngày có kiểu dữ liệu là object trước khi gán
+                    if class_df[current_date].dtype != 'object':
+                        class_df[current_date] = class_df[current_date].astype('object')
+
+                    # Gán giá trị 'X' vào cột ngày
+                    class_df.loc[class_df['MSSV'] == student_mssv, current_date] = 'X'
+
+                    # Ghi file Excel ngay sau khi nhận diện
+                    class_df.to_excel(class_file_path, index=False)
+
+                    # Lưu ảnh vào thư mục riêng
+                    recognized_image_path = os.path.join(
+                        recognized_folder, f"{student_id}_{student_name}_{date}_{time_stamp.replace(':', 'h')}.jpg"
+                    )
+                    cv2.imwrite(recognized_image_path, img)
+
+                    # Thông báo thành công
+                    print(f"Đã cập nhật điểm danh cho MSSV: {student_mssv} vào ngày {current_date}.")
+
+                else:  # Nếu không nhận diện được
+                    student_name = "Unknown"
+
+                # Hiển thị tên trên màn hình camera
+                cv2.putText(img, str(student_name), (x, y + h + 20), font, 1, (255, 255, 255), 2)
+                cv2.imshow('FACE RECOGNIZER', img)
+
+            if cv2.waitKey(1000) == ord('q'):  # Nhấn 'q' để thoát
+                break
+
+        cam.release()
+        cv2.destroyAllWindows()
+
+        messagebox.showinfo("Thành công", f"Điểm danh cho lớp {class_name} đã được cập nhật thành công.")
+
+    except Exception as e:
+        messagebox.showerror("Lỗi", f"Đã xảy ra lỗi khi nhận diện: {str(e)}")

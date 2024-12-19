@@ -1,1 +1,48 @@
 load file excel danh sách lớp lên, sau đó chọn một sinh viên trong danh sách để nhận diện khuôn mặt
+quét đến khi hiện tên thì chụp một ảnh, lưu vào một thư mục riêng
+
+dropdown chọn lớp,
+sau khi có lớp, trong treeview sẽ tự động load file excel của lớp đó
+sau khi điểm danh xong, sẽ cập nhật vào file excel của lớp đó
+
+
+self.root = root
+        self.root.title("HỆ THỐNG ĐIỂM DANH SINH VIÊN BẰNG NHẬN DIỆN KHUÔN MẶT")
+        self.root.geometry("1000x500+250+100")
+        self.root.configure(background='#CCFFFF')
+        self.root.option_add('*Font', 'Arial 10')
+
+        # Biến lưu file Excel, DataFrame, và ánh xạ MSSV <-> ID
+        self.excel_file = None
+        self.df = None
+        self.mssv_to_id = {}
+        self.id_to_mssv = {}
+
+        # Treeview Data
+        self.tree_data = None
+
+        # Tiêu đề chính
+        self.title_label = tk.Label(root, text="HỆ THỐNG ĐIỂM DANH SINH VIÊN BẰNG NHẬN DIỆN KHUÔN MẶT",
+                                    font=("Arial", 16, "bold"), bg="#CCFFFF", fg="#000080")
+        self.title_label.place(x=100, y=100, width=800, height=40)
+
+        # Dropdown chọn lớp
+        self.selected_class = tk.StringVar()
+        self.selected_class.set("Chọn lớp")
+        self.class_dropdown = ttk.Combobox(root, textvariable=self.selected_class, state="readonly", font=("Arial", 10))
+
+
+        # Nút Thêm Khuôn Mặt
+        self.add_face_button = tk.Button(root, text="THÊM KHUÔN MẶT", command=self.open_add_face_window,
+                                         background="#3399FF", fg="white", font=("Arial", 8))
+
+        # Nút Điểm Danh
+        self.track_button = tk.Button(root, text="ĐIỂM DANH", command=self.track_students,
+                                      background="#3399FF", fg="white", font=("Arial", 8))
+
+        # Sắp xếp giao diện dropdown và nút chung một hàng
+        self.class_dropdown.place(x=150, y=200, width=300, height=35)
+        self.add_face_button.place(x=480, y=200, width=150, height=35)
+        self.track_button.place(x=680, y=200, width=150, height=35)
+
+        self.update_class_dropdown()
