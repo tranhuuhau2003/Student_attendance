@@ -5,6 +5,8 @@ from tkinter import filedialog, ttk, messagebox
 import pandas as pd
 from PIL import Image, ImageTk
 
+
+
 from functions import capture_image, train_images, track_images
 
 def remove_accents(input_str):
