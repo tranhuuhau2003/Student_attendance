@@ -13,7 +13,6 @@ def remove_accents(input_str):
 
 
 
-
 class AttendanceApp:
     def __init__(self, root):
         self.root = root
